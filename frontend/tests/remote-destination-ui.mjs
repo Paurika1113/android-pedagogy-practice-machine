@@ -20,6 +20,8 @@ const packages = ['one', 'two'].map(packageId => ({ packageId, contentVersion: '
 const context = vm.createContext({
   busy: ref(''), error: ref(''), notice: ref(''), destinationOpen: ref(false),
   destinationError: ref(''), destinations: ref([]), packageResults: ref({}),
+  destinationStage: ref('config'), packageProgress: ref({}), completedImportId: ref(null),
+  removeProgressListener: null, document: { documentElement: { dataset: { platform: 'web' } } },
   questionBankCatalog: ref({ packages }), selectedPackages: ref(['one@1', 'two@1']),
   questionBankProfilesState: { items: [{ id: 7, name: 'Original' }] },
   packageKey: item => item.packageId + '@' + item.contentVersion,
@@ -37,7 +39,7 @@ assert.equal(context.destinationOpen.value, true)
 assert.equal(calls.length, 0)
 assert.deepEqual(Array.from(context.destinations.value, target => target.mode), ['new', 'new'])
 assert.deepEqual(Array.from(context.destinations.value, target => target.profileId), [0, 0])
-assert.match(descriptor.template.content, /@click="destinationOpen = false">取消/)
+assert.match(descriptor.template.content, /@click="closeDestination"/)
 context.destinationOpen.value = false
 await context.installSelectedPackages()
 assert.equal(calls.length, 0)
@@ -60,6 +62,8 @@ assert.equal(calls[1].new_profile_name, undefined)
 assert.equal(context.packageResults.value['one@1'].status, 'failed')
 assert.equal(context.packageResults.value['two@1'].status, 'success')
 assert.equal(context.busy.value, '')
-assert.equal(routes[0].query.esqImportId, '42')
+assert.equal(context.destinationStage.value, 'finished')
+assert.equal(context.completedImportId.value, 42)
+assert.equal(routes.length, 0)
 assert.equal(context.questionBankProfilesState.items.length, 1)
 console.log('Remote destination UI: defaults, cancel, duplicate/invalid guards and mixed batch failure isolation passed')

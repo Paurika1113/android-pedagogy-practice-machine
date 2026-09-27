@@ -4,3 +4,4 @@ export function swipeStep(start: SwipeStart, x: number, y: number, at: number, o
   if (orientation !== start.orientation || at-start.at > 650 || at-start.at < 30 || Math.abs(dx)<64 || Math.abs(dx)<=Math.abs(dy)*1.5) return 0
   return dx < 0 ? 1 : -1
 }
+

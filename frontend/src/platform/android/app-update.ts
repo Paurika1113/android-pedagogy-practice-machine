@@ -1,5 +1,5 @@
 import { App } from '@capacitor/app'
-import { registerPlugin } from '@capacitor/core'
+import { registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import { row, run } from './database'
 import { LocalApiError } from './errors'
 import { JsonResponseError } from '../json-response.ts'
@@ -71,6 +71,7 @@ function mirrorRewriteApkUrl(manifestUrl: string, apkUrl: string): string {
 }
 
 interface AppUpdaterPlugin {
+  addListener(eventName: 'questionBankDownloadProgress', listener: (event: QuestionBankDownloadProgress) => void): Promise<PluginListenerHandle>
   downloadAndInstall(options: {
     url: string
     sha256: string
@@ -89,11 +90,20 @@ interface AppUpdaterPlugin {
     sha256: string
     expectedSize: number
     fileName: string
+    transferId?: string
   }): Promise<{ packageData: string; cleanupToken: string }>
   resolveQuestionBankAssets(options: {
     cleanupToken: string
     delete: boolean
   }): Promise<{ deleted: boolean; retained: boolean }>
+}
+
+export interface QuestionBankDownloadProgress {
+  transferId: string
+  state: 'downloading' | 'verifying'
+  downloadedBytes: number
+  totalBytes: number
+  speedBytesPerSecond: number
 }
 
 export interface PendingInstallerCleanup {
@@ -104,6 +114,10 @@ export interface PendingInstallerCleanup {
 }
 
 const NativeAppUpdater = registerPlugin<AppUpdaterPlugin>('AppUpdater')
+
+export function onQuestionBankDownloadProgress(listener: (event: QuestionBankDownloadProgress) => void): Promise<PluginListenerHandle> {
+  return NativeAppUpdater.addListener('questionBankDownloadProgress', listener)
+}
 
 async function setting(key: string): Promise<string> {
   const existing = await row<{ value: string }>(
@@ -241,6 +255,7 @@ export async function downloadQuestionBankPackage(body: JsonRecord): Promise<Jso
     sha256: item.sha256,
     expectedSize: Number(item.size),
     fileName: filename,
+    transferId: typeof body.transfer_id === 'string' ? body.transfer_id : undefined,
   }))
   let packageData: JsonRecord
   try {

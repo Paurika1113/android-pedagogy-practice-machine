@@ -20,10 +20,12 @@ import {
   Server,
   PlugZap,
   Trash2,
+  X,
 } from 'lucide-vue-next'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { del, get, post } from '../api'
 import { confirmDialog } from '../platform/dialogs'
+import { pushOverlayHistory } from '../platform/overlay-history'
 import {
   SELECTABLE_ADAPTERS,
   adapterFor,
@@ -68,6 +70,55 @@ const error = ref('')
 const creating = ref(false)
 const moreMenuFor = ref<number | null>(null)
 const modelListExpanded = reactive<Record<number, boolean>>({})
+// 横屏里页内下拉会被卡片裁切，模型显示列表改用弹出层，页内结构只在竖屏保留。
+const modelSheetFor = ref<number | null>(null)
+const modelQuery = ref('')
+let modelOverlayHandle: { close: () => void; dispose: () => void } | null = null
+const modelSheetProfile = computed<AiProfile | null>(() => profiles.value.find(profile => profile.id === modelSheetFor.value) || null)
+function modelListOpen(profile: AiProfile) {
+  return landscape.value ? modelSheetFor.value === profile.id : !!modelListExpanded[profile.id]
+}
+function openModelSheet(profile: AiProfile) {
+  modelQuery.value = ''
+  modelSheetFor.value = profile.id
+}
+function closeModelSheet() {
+  modelSheetFor.value = null
+  modelQuery.value = ''
+}
+function modelSheetRows(profile: AiProfile) {
+  const query = modelQuery.value.trim().toLowerCase()
+  if (!query) return filteredModels(profile)
+  return filteredModels(profile).filter(model => [model.display_name, model.model_id, model.owned_by, model.provider]
+    .some(value => String(value || '').toLowerCase().includes(query)))
+}
+function modelSheetVisibleCount(profile: AiProfile) {
+  return profile.models.filter(model => model.is_visible).length
+}
+// 自动保存的「已保存」确认在横屏收起，失败和重试仍然留在页面上可点。
+function isSavedState(text?: string) {
+  return !landscape.value || !String(text || '').endsWith('已保存')
+}
+function onModelSheetKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  event.preventDefault()
+  closeModelSheet()
+}
+watch(modelSheetFor, (current, previous) => {
+  if (current !== null && previous === null) {
+    modelOverlayHandle = pushOverlayHistory(() => { modelSheetFor.value = null })
+    window.addEventListener('keydown', onModelSheetKeydown)
+  } else if (current === null && previous !== null) {
+    modelOverlayHandle?.dispose()
+    modelOverlayHandle = null
+    window.removeEventListener('keydown', onModelSheetKeydown)
+  }
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onModelSheetKeydown)
+  modelOverlayHandle?.dispose()
+  modelOverlayHandle = null
+})
 
 function blankProfile(): AiProfile {
   return {
@@ -218,6 +269,8 @@ async function saveProfile(profile: AiProfile) {
 function editProfile(profile: AiProfile, immediate = false) { saveProfileDraft(profile.id, payload(profile), immediate) }
 function chooseDefault(profile: AiProfile) {
   preferDefaultProfile(profile.id)
+  // 页内立即翻转：不能只改其它配置，否则被点的那条要等下次进入页面才显示为默认。
+  profile.is_default = true
   for (const other of profiles.value) {
     if (other.id !== profile.id && other.is_default) { other.is_default = false; editProfile(other, true) }
   }
@@ -276,6 +329,11 @@ async function setAllVisible(profile: AiProfile, visible: boolean) {
 }
 
 function toggleModelList(profile: AiProfile) {
+  if (landscape.value) {
+    if (modelSheetFor.value === profile.id) closeModelSheet()
+    else openModelSheet(profile)
+    return
+  }
   modelListExpanded[profile.id] = !modelListExpanded[profile.id]
 }
 
@@ -340,7 +398,7 @@ onMounted(() => {
         </div>
         <div class="grid grid-2">
           <div class="field"><label for="new-profile-model">默认模型（可稍后同步选择）</label><input id="new-profile-model" v-model.trim="newProfile.default_model" placeholder="例如：qwen3:8b"></div>
-          <div class="field"><label for="new-profile-url">API Base URL</label><input id="new-profile-url" v-model.trim="newProfile.base_url" :placeholder="adapterDefinition(newProfile).baseUrlPlaceholder"><small>请求端点：{{ endpointPreview(newProfile) }}</small></div>
+          <div class="field"><label for="new-profile-url">{{ landscape ? 'base url' : 'API Base URL' }}</label><input id="new-profile-url" v-model.trim="newProfile.base_url" :placeholder="adapterDefinition(newProfile).baseUrlPlaceholder"><small>请求端点：{{ endpointPreview(newProfile) }}</small></div>
         </div>
         <div class="grid grid-2">
           <div class="field"><label for="new-profile-key">API Key</label><input id="new-profile-key" v-model="newProfile.api_key" type="password" placeholder="本地接口通常可留空"></div>
@@ -360,7 +418,12 @@ onMounted(() => {
     </section>
 
     <div class="api-profile-list">
-      <article v-for="profile in profiles" :key="profile.id" class="api-profile-card">
+      <article
+        v-for="profile in profiles"
+        :key="profile.id"
+        class="api-profile-card"
+        :class="{ 'api-profile-card-overlay-open': expandedProfileId === profile.id || moreMenuFor === profile.id }"
+      >
         <header class="api-profile-summary">
           <button class="api-profile-expand" type="button" :aria-expanded="expandedProfileId === profile.id" @click="toggleExpanded(profile.id)">
             <span class="api-profile-icon"><Server :size="20" /></span>
@@ -384,7 +447,7 @@ onMounted(() => {
             :class="{ active: profile.enabled }"
             @click="toggleProfile(profile)"
           ><span /></button>
-          <div class="api-more">
+          <div v-if="!landscape" class="api-more">
             <button class="icon-button" type="button" :aria-label="`${profile.name} 更多操作`" :aria-expanded="moreMenuFor === profile.id" @click="toggleMoreMenu(profile.id)">
               <MoreHorizontal :size="18" />
             </button>
@@ -394,11 +457,12 @@ onMounted(() => {
               </button>
             </div>
           </div>
+          <button v-else class="icon-button api-delete-button" type="button" :aria-label="`删除配置 ${profile.name}`" @click="removeProfile(profile)"><Trash2 :size="18" /></button>
         </header>
 
         <div v-if="expandedProfileId === profile.id" class="api-profile-body">
-          <button v-if="profileSaveStates[profile.id]" class="api-save-status" role="status" type="button" @click="saveProfile(profile)">{{ profileSaveStates[profile.id] }}</button>
-          <button v-if="visibilitySaveStates[profile.id]" class="api-save-status visibility-save-status" role="status" type="button" :disabled="visibilitySaveStates[profile.id]?.busy" @click="retryModelVisibility(profile.id)">{{ visibilitySaveStates[profile.id]?.message }}</button>
+          <button v-if="profileSaveStates[profile.id] && isSavedState(profileSaveStates[profile.id])" class="api-save-status" role="status" type="button" @click="saveProfile(profile)">{{ profileSaveStates[profile.id] }}</button>
+          <button v-if="visibilitySaveStates[profile.id] && isSavedState(visibilitySaveStates[profile.id]?.message)" class="api-save-status visibility-save-status" role="status" type="button" :disabled="visibilitySaveStates[profile.id]?.busy" @click="retryModelVisibility(profile.id)">{{ visibilitySaveStates[profile.id]?.message }}</button>
           <p v-if="notices[profile.id]" class="api-profile-notice" role="status">{{ notices[profile.id] }}</p>
 
           <section class="api-detail-section" aria-labelledby="api-conn-title">
@@ -411,7 +475,7 @@ onMounted(() => {
               </div>
             </div>
             <div class="grid grid-2 api-connection-grid">
-              <div class="field"><label for="profile-url">API Base URL</label><input id="profile-url" v-model="profile.base_url" @input="editProfile(profile)" @blur="editProfile(profile,true)" :placeholder="adapterDefinition(profile).baseUrlPlaceholder"><small v-if="!landscape">请求端点：{{ endpointPreview(profile) }}</small></div>
+              <div class="field"><label for="profile-url">{{ landscape ? 'base url' : 'API Base URL' }}</label><input id="profile-url" v-model="profile.base_url" @input="editProfile(profile)" @blur="editProfile(profile,true)" :placeholder="adapterDefinition(profile).baseUrlPlaceholder"><small v-if="!landscape">请求端点：{{ endpointPreview(profile) }}</small></div>
               </div></div><NamedModelKeys :profile="profile" @changed="signalChanged" />
               <button class="default-config-switch-row" type="button" role="switch" :aria-checked="profile.is_default" :class="{ active: profile.is_default }" @click="!profile.is_default && chooseDefault(profile)">
                 <span>设置为默认配置</span><i aria-hidden="true"><b /></i>
@@ -450,10 +514,10 @@ onMounted(() => {
 <section class="api-detail-section api-model-management">
   <div class="api-model-toolbar">
     <div class="api-model-list-control">
-      <button class="api-model-list-toggle" type="button" :aria-expanded="!!modelListExpanded[profile.id]" @click="toggleModelList(profile)">
-        <span>模型显示列表 · {{ profile.models.length }} 个</span><ChevronDown v-if="!modelListExpanded[profile.id]" :size="18" /><ChevronUp v-else :size="18" />
+      <button class="api-model-list-toggle" type="button" :aria-expanded="modelListOpen(profile)" @click="toggleModelList(profile)">
+        <span>模型显示列表 · {{ profile.models.length }} 个</span><ChevronDown v-if="!modelListOpen(profile)" :size="18" /><ChevronUp v-else :size="18" />
       </button>
-      <div v-if="modelListExpanded[profile.id]" class="api-model-list" role="listbox" aria-label="模型显示列表">
+      <div v-if="!landscape && modelListExpanded[profile.id]" class="api-model-list" role="listbox" aria-label="模型显示列表">
         <div v-for="model in filteredModels(profile)" :key="model.model_id" class="api-model-row" :class="{ unavailable: !model.is_available }">
           <div><strong>{{ model.display_name || model.model_id }}</strong><small>{{ model.owned_by || model.provider || '接口模型' }}<template v-if="!model.is_available"> · 本次同步未发现</template></small></div>
           <button type="button" role="switch" :aria-checked="model.is_visible" :disabled="!model.is_available" :class="{ active:model.is_visible }" @click="setModelVisible(profile,model)">
@@ -496,16 +560,51 @@ onMounted(() => {
       </div>
     </section>
   </div>
+
+  <Teleport to="body">
+    <template v-if="modelSheetProfile">
+      <section class="app-sheet-overlay" role="presentation" @click.self="closeModelSheet">
+        <section class="app-sheet model-sheet" role="dialog" aria-modal="true" aria-labelledby="model-sheet-title">
+          <header class="app-sheet-head">
+            <h3 id="model-sheet-title">模型显示列表</h3>
+            <button class="app-sheet-close" type="button" aria-label="关闭" @click="closeModelSheet"><X :size="20" /></button>
+          </header>
+          <p class="model-sheet-meta">共 {{ modelSheetProfile.models.length }} 个模型 · 已显示 {{ modelSheetVisibleCount(modelSheetProfile) }} 个 · 逐个开关控制是否出现在选择列表里</p>
+          <label class="app-sheet-search"><input v-model="modelQuery" type="search" placeholder="搜索模型" aria-label="搜索模型"></label>
+          <div class="app-sheet-list" role="listbox" aria-label="模型显示列表">
+            <div v-for="model in modelSheetRows(modelSheetProfile)" :key="model.model_id" class="app-sheet-option api-model-row" :class="{ unavailable: !model.is_available }">
+              <div><strong>{{ model.display_name || model.model_id }}</strong><small>{{ model.owned_by || model.provider || '接口模型' }}<template v-if="!model.is_available"> · 本次同步未发现</template></small></div>
+              <button type="button" role="switch" :aria-checked="model.is_visible" :disabled="!model.is_available" :class="{ active:model.is_visible }" @click="setModelVisible(modelSheetProfile,model)">
+                <Eye v-if="model.is_visible" :size="15" /><EyeOff v-else :size="15" />{{ model.is_visible ? '显示' : '隐藏' }}
+              </button>
+            </div>
+            <div v-if="!modelSheetRows(modelSheetProfile).length" class="app-sheet-empty">没有匹配的模型。</div>
+          </div>
+          <footer class="model-sheet-foot">
+            <button type="button" @click="setAllVisible(modelSheetProfile,false)"><EyeOff :size="15" />全部隐藏</button>
+            <button type="button" @click="setAllVisible(modelSheetProfile,true)"><Eye :size="15" />全部显示</button>
+            <button class="model-sheet-done" type="button" @click="closeModelSheet">完成</button>
+          </footer>
+        </section>
+      </section>
+    </template>
+  </Teleport>
 </template>
 
 <style scoped>
 .api-save-status { border:0; background:transparent; color:var(--muted); min-height:32px; padding:0; text-align:left; }
 .api-connection-layout { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
 .api-connection-layout,.api-connection-fields { display:contents; }
-html[data-platform="android"][data-orientation="landscape"] .api-connection-layout { display:grid; gap:20px; }
-html[data-platform="android"][data-orientation="landscape"] .api-connection-fields > .grid { display:contents; }
-html[data-platform="android"][data-orientation="landscape"] .api-connection-fields { display:grid; gap:12px; align-content:start; padding-right:20px; border-right:1px solid var(--line); }
-html[data-platform="android"][data-orientation="landscape"] .api-connection-fields .field { display:grid; grid-template-columns:100px minmax(0,1fr); gap:12px; align-items:center; margin:0; }
+/* 横屏连接区：左列三行依次是配置名称 / 接口协议 / base url，右列上方是密钥、
+   第三行是「设置为默认配置」，所以 base url 和默认开关落在同一条水平线上。 */
+html[data-platform="android"][data-orientation="landscape"] .api-connection-layout { position:relative; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:repeat(3,auto); column-gap:24px; row-gap:12px; align-items:stretch; }
+html[data-platform="android"][data-orientation="landscape"] .api-connection-layout > .api-connection-fields,
+html[data-platform="android"][data-orientation="landscape"] .api-connection-layout > .api-connection-fields > .grid { display:contents; }
+html[data-platform="android"][data-orientation="landscape"] .api-connection-layout .api-connection-fields .field { grid-column:1; display:grid; grid-template-columns:100px minmax(0,1fr); gap:12px; align-items:center; margin:0; }
+html[data-platform="android"][data-orientation="landscape"] .api-connection-layout > :deep(.named-keys) { grid-area:1 / 2 / 3 / 3; margin:0; }
+html[data-platform="android"][data-orientation="landscape"] .api-connection-layout > .default-config-switch-row { grid-area:3 / 2 / 4 / 3; width:100%; min-height:44px; margin:0; padding:7px 0; border:0; }
+html[data-platform="android"][data-orientation="landscape"] .api-connection-layout > .default-config-switch-row > span { font-size:15px; font-weight:600; }
+html[data-platform="android"][data-orientation="landscape"] .api-connection-layout::after { content:""; position:absolute; top:0; bottom:0; left:calc(50% - 12px); width:1px; background:var(--line); pointer-events:none; }
 html[data-platform="android"][data-orientation="landscape"] .api-model-setup-grid { grid-template-columns:minmax(0,1.2fr) minmax(0,.85fr) auto; align-items:start; gap:12px; margin-top:12px; padding-top:12px; }
 html[data-platform="android"][data-orientation="landscape"] .api-model-setup-grid .field { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; align-items:center; margin:0; }
 html[data-platform="android"][data-orientation="landscape"] .api-advanced-section .grid { display:block; }
@@ -533,4 +632,32 @@ html[data-platform="android"][data-orientation="landscape"] .api-model-managemen
   .api-model-toolbar { flex-wrap:wrap; }
   .api-model-list-control { flex-basis:100%; }
 }
+
+/* 横屏卡片排版：字号统一并整体加粗，只在横屏生效，竖屏保持原样。 */
+html[data-platform="android"][data-orientation="landscape"] .api-profile-body { font-size:15px; }
+html[data-platform="android"][data-orientation="landscape"] .api-profile-body .field > label { font-size:15px; font-weight:600; color:var(--ink); }
+html[data-platform="android"][data-orientation="landscape"] .api-profile-body .field input,
+html[data-platform="android"][data-orientation="landscape"] .api-profile-body .field select,
+html[data-platform="android"][data-orientation="landscape"] .api-profile-body :deep(.option-sheet-trigger),
+html[data-platform="android"][data-orientation="landscape"] .api-profile-body :deep(.named-keys input) { font-size:15px; font-weight:600; }
+html[data-platform="android"][data-orientation="landscape"] .api-profile-body .field small { font-size:13px; font-weight:500; }
+html[data-platform="android"][data-orientation="landscape"] .api-profile-copy > span > strong { font-size:17px; font-weight:700; }
+html[data-platform="android"][data-orientation="landscape"] .api-profile-copy > small { font-size:13px; font-weight:600; }
+html[data-platform="android"][data-orientation="landscape"] .api-profile-copy > span > small { font-size:12.5px; font-weight:700; }
+html[data-platform="android"][data-orientation="landscape"] .api-model-toolbar-actions button { min-height:44px; padding:8px 12px; font-size:15px; font-weight:600; }
+html[data-platform="android"][data-orientation="landscape"] .api-model-list-toggle { min-height:48px; }
+html[data-platform="android"][data-orientation="landscape"] .api-model-list-toggle > span { font-size:15px; font-weight:600; }
+html[data-platform="android"][data-orientation="landscape"] .api-profile-summary { grid-template-columns:minmax(0,1fr) 48px 48px; }
+html[data-platform="android"][data-orientation="landscape"] .api-delete-button { width:44px; height:44px; border:1px solid var(--line); border-radius:13px; background:var(--surface-solid); color:var(--muted); }
+html[data-platform="android"][data-orientation="landscape"] .api-delete-button:hover { border-color:color-mix(in srgb, var(--danger) 36%, var(--line)); background:var(--danger-soft); color:var(--danger); }
+
+/* 横屏模型显示列表弹层：复用全局 .app-sheet 结构，行内保留「显示 / 隐藏」开关。 */
+.model-sheet-meta { padding:12px 2px 0; color:var(--muted); font-size:13px; line-height:1.6; }
+.model-sheet .api-model-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; min-height:62px; }
+.model-sheet .api-model-row > div { min-width:0; }
+.model-sheet .api-model-row > button { min-width:96px; min-height:44px; font-size:14px; font-weight:600; }
+.model-sheet-foot { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--line); }
+.model-sheet-foot button { min-height:44px; padding:8px 14px; display:flex; align-items:center; gap:6px; border:0; border-radius:12px; background:transparent; color:var(--muted); font-size:15px; font-weight:600; }
+.model-sheet-foot button:hover { background:var(--primary-faint); color:var(--ink); }
+.model-sheet-foot .model-sheet-done { margin-left:auto; color:var(--ink); background:var(--primary-faint); }
 </style>

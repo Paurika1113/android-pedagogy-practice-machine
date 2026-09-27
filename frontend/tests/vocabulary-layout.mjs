@@ -165,7 +165,12 @@ try {
       if(state==='revealed') await page.locator('.reveal-button').click()
       if(state==='revealed') {
         assert.equal(await page.locator('.review-answer .review-meaning-block').first().getAttribute('class'),'review-meaning-block detail-section')
-        assert.equal(await page.locator('.review-answer .review-part-of-speech').innerText(),'n.')
+        // 每日一背固定只显示常用释义与真题原句：设置项全开时词性等其余 9 项也不得出现。
+        assert.equal(await page.locator('.review-answer .review-part-of-speech').count(),0,label+': 每日一背不应显示词性')
+        assert.deepEqual(await page.locator('.review-answer .memory-layer').evaluateAll(items=>items.map(el=>el.querySelector('h4,summary')?.textContent?.trim())),['真题原句'],label+': 每日一背只应渲染真题原句栏目')
+        assert.equal(await page.locator('.review-answer details').count(),0,label+': 每日一背不应有可折叠栏目')
+        const answerText=await page.locator('.review-answer').innerText()
+        for (const column of ['音标','词性','模型例句','词形变化','同义词辨析','反义词辨析','形近词辨析','记忆提示','我的笔记']) assert.ok(!answerText.includes(column),label+': 每日一背内容不应包含「'+column+'」')
         assert.deepEqual(await page.locator('.review-actions button').allTextContents(),['不认识','认识','熟练'])
         const tops=await page.locator('.review-actions button').evaluateAll(buttons=>buttons.map(button=>button.getBoundingClientRect().top))
         assert.ok(Math.max(...tops)-Math.min(...tops)<2,'rating buttons stay in one row')

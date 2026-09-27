@@ -6,7 +6,7 @@ import { LocalApiError } from './errors'
 import { chooseSnapshot } from './practice-snapshots'
 import { abandonIfEmpty, archiveWrongUnits, createSession, dashboard, getSession, listWrong, saveAnswer, submitSession, submitUnit } from './practice'
 import { createEsqImport, listEsqImports, listPapers, publishEsqImport, readEsqImport, sweepEmptyPaperSessions } from './question-bank'
-import { addVocabulary, deleteVocabulary, homeVocabulary, listVocabulary, reviewVocabulary, retryVocabulary, serializeEntry, updateVocabulary, vocabularyRevision } from './vocabulary'
+import { addVocabulary, deleteVocabulary, homeVocabulary, listVocabulary, reviewVocabulary, retryVocabulary, serializeEntry, updateVocabulary, vocabularyRevision, vocabularyStatus } from './vocabulary'
 import { checkAppUpdate, checkQuestionBankCatalog, downloadQuestionBankPackage, installAppUpdate, readUpdateSettings, updateSettings } from './app-update'
 import {
   createDocumentImport,
@@ -201,6 +201,9 @@ export async function androidLocalApi<T>(path: string, options: RequestInit = {}
   }
   if (pathname === '/vocabulary/revision' && method === 'GET') {
     return await vocabularyRevision(url.searchParams) as T
+  }
+  if (pathname === '/vocabulary/status' && method === 'GET') {
+    return await vocabularyStatus(url.searchParams) as T
   }
   if (pathname === '/vocabulary' && method === 'POST') {
     const result = await addVocabulary(body!)

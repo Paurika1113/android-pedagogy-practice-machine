@@ -19,3 +19,4 @@ assert.deepEqual(orderedDueKeys({version:1,main,relearning:again,ordinarySinceRe
 const stale={version:1,main:['gone','later','valid','valid'],relearning:[],ordinarySinceRelearning:0}
 assert.deepEqual(reconcileDueQueue(stale,[{term:'later',translation_status:'ready',next_review_at:new Date(now+day).toISOString()},{term:'valid',translation_status:'ready'}],now).main,['valid'])
 console.log('PASS persistent fair queue: 100 words over 10 days, newcomers, 4:1 relearning, deletion and synced review pruning')
+

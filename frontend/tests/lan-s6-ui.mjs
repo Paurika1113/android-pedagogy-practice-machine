@@ -129,12 +129,11 @@ try {
     await page.getByLabel('新 API 密钥',{exact:true}).fill('synthetic-value-not-a-secret')
     await page.getByRole('button',{name:'添加密钥',exact:true}).click()
     if (android && width > height) {
-      const selector = page.locator('.key-select')
-      await selector.waitFor()
-      assert.equal(await selector.getAttribute('aria-expanded'), 'false')
-      await selector.click()
+      assert.equal(await page.locator('.key-select').count(), 0)
+      assert.equal(await page.locator('.key-heading').count(), 1)
     }
     await page.waitForFunction(()=>document.querySelectorAll('.key-row').length===2)
+    if (android && width > height) assert.equal(await page.getByRole('button',{name:'添加',exact:true}).getAttribute('aria-expanded'), 'false')
     assert.equal(await page.getByRole('radio', {name: '选用 Test addition', exact: true}).count(), 1)
     assert.deepEqual(errors,[])
     const label=[width+'x'+height,dark?'dark':'light','font-'+scale].join('-')

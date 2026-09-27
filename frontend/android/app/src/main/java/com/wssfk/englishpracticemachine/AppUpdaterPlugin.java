@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 
 import androidx.core.content.FileProvider;
 
@@ -78,7 +79,8 @@ public class AppUpdaterPlugin extends Plugin {
         String sanitizedName = requestedName.replaceAll("[^A-Za-z0-9._-]", "_");
         final String fileName = sanitizedName.toLowerCase(Locale.ROOT).endsWith(".esq")
             ? sanitizedName : sanitizedName + ".esq";
-        executor.execute(() -> downloadQuestionBank(call, url, expectedHash, expectedSize, fileName));
+        String transferId = call.getString("transferId", "");
+        executor.execute(() -> downloadQuestionBank(call, url, expectedHash, expectedSize, fileName, transferId));
     }
 
     static Long readQuestionBankSize(Object value) {
@@ -90,7 +92,7 @@ public class AppUpdaterPlugin extends Plugin {
         return (long) size;
     }
 
-    private void downloadQuestionBank(PluginCall call, String url, String expectedHash, long expectedSize, String fileName) {
+    private void downloadQuestionBank(PluginCall call, String url, String expectedHash, long expectedSize, String fileName, String transferId) {
         File temporary = new File(getContext().getCacheDir(), "esq-" + System.nanoTime() + "-" + fileName);
         HttpURLConnection connection = null;
         try {
@@ -109,6 +111,9 @@ public class AppUpdaterPlugin extends Plugin {
             if (declaredSize >= 0 && declaredSize != expectedSize) throw new SecurityException("题库文件大小与目录声明不一致");
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             long total = 0L;
+            long lastProgressTime = SystemClock.elapsedRealtime();
+            long lastProgressBytes = 0L;
+            sendQuestionBankProgress(transferId, "downloading", 0L, expectedSize, 0L);
             try (InputStream input = connection.getInputStream(); FileOutputStream output = new FileOutputStream(temporary)) {
                 byte[] buffer = new byte[64 * 1024];
                 int count;
@@ -119,8 +124,16 @@ public class AppUpdaterPlugin extends Plugin {
                     }
                     output.write(buffer, 0, count);
                     digest.update(buffer, 0, count);
+                    long now = SystemClock.elapsedRealtime();
+                    if (now - lastProgressTime >= 500L) {
+                        long speed = (total - lastProgressBytes) * 1000L / Math.max(1L, now - lastProgressTime);
+                        sendQuestionBankProgress(transferId, "downloading", total, expectedSize, speed);
+                        lastProgressTime = now;
+                        lastProgressBytes = total;
+                    }
                 }
             }
+            sendQuestionBankProgress(transferId, "verifying", total, expectedSize, 0L);
             if (total != expectedSize) throw new SecurityException("题库文件大小与目录声明不一致");
             if (!hex(digest.digest()).equalsIgnoreCase(expectedHash)) throw new SecurityException("题库 SHA-256 校验失败，文件可能不完整或已被替换");
             org.json.JSONObject staged = EsqStage.stage(temporary, getContext().getFilesDir());
@@ -134,6 +147,17 @@ public class AppUpdaterPlugin extends Plugin {
             if (connection != null) connection.disconnect();
             temporary.delete();
         }
+    }
+
+    private void sendQuestionBankProgress(String transferId, String state, long downloadedBytes, long totalBytes, long speedBytesPerSecond) {
+        if (transferId.isEmpty()) return;
+        JSObject event = new JSObject();
+        event.put("transferId", transferId);
+        event.put("state", state);
+        event.put("downloadedBytes", downloadedBytes);
+        event.put("totalBytes", totalBytes);
+        event.put("speedBytesPerSecond", speedBytesPerSecond);
+        notifyListeners("questionBankDownloadProgress", event);
     }
 
     @PluginMethod

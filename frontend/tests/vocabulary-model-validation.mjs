@@ -54,3 +54,4 @@ assert.equal(await api.translateVocabularyEntries([1]),1)
 assert.equal(JSON.parse(messages[1].content).includeEnrichment,undefined)
 assert.match(messages[0].content,/使用中文标签/)
 db.close();console.log('PASS partial/duplicate/wrong-ID responses, missing morphology/example, exact term, same-second edits and manual enrichment')
+

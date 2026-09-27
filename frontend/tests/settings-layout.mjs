@@ -14,7 +14,7 @@ const fixtureProfile = {
   adapter: 'openai-chat',
   base_url: 'https://synthetic.example.test/openai-compatible/very-long-path/v1',
   has_api_key: true,
-  keys: [{ id: 'fixture-key', name: '合成已选密钥' }],
+  keys: [{ id: 'fixture-key', name: '合成已选密钥', mask: 'sk-f****k9d2' }],
   selected_key_id: 'fixture-key',
   enabled: true,
   is_default: true,
@@ -43,7 +43,7 @@ export async function post(path, body) {
   if (path.endsWith('/keys')) {
     window.keyActions = [...(window.keyActions || []), body.action];
     if (body.action === 'rename') profile.keys.find(key => key.id === body.identity).name = body.name;
-    if (body.action === 'add') profile.keys.push({id:'added-key',name:body.name});
+    if (body.action === 'add') profile.keys.push({id:'added-key-'+(profile.keys.length+1),name:body.name,mask:'sk-a****t987'});
     if (body.action === 'select') profile.selected_key_id = body.identity;
     if (body.action === 'delete') {
       profile.keys = profile.keys.filter(key => key.id !== body.identity);
@@ -133,25 +133,49 @@ try {
       await page.waitForFunction(()=>window.keyActions?.includes('add'))
       if (width > height) {
         await page.evaluate(() => { document.documentElement.dataset.orientation = 'landscape' })
-        const keyToggle = keyBox.locator('.key-select')
-        await keyToggle.waitFor()
-        assert.equal(await keyToggle.getAttribute('aria-expanded'), 'false')
-        assert.equal(await keyBox.locator('.key-menu').count(), 0)
-        assert.doesNotMatch(await keyBox.innerText(), /已安全保存|当前使用|API Key · \d+|\d+ 个密钥/)
-        await keyToggle.click()
-        const keyGeometry = await page.evaluate(() => {
+        await keyBox.locator('.key-heading').waitFor()
+        assert.match(await keyBox.locator('.key-heading > strong').innerText(), /API Key/)
+        assert.equal(await keyBox.locator('.key-select').count(), 0)
+        assert.equal(await keyBox.locator('.key-summary').count(), 0)
+        assert.equal(await keyBox.locator('.key-row').count(), 2)
+        const keyText = await keyBox.innerText()
+        assert.match(keyText, /重新命名的密钥/)
+        assert.match(keyText, /新增合成密钥/)
+        assert.ok(keyText.includes('···· k9d2'), keyText)
+        assert.ok(keyText.includes('···· t987'), keyText)
+        assert.equal(await keyBox.locator('.key-more').count(), 0)
+        const connection = await page.evaluate(() => {
           const box = selector => { const r=document.querySelector(selector).getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height} }
-          return {
-            toggle: box('.named-keys .key-select'),
-            menu: box('.named-keys .key-menu'),
-            enable: box('.api-profile-card:not(.new-profile) .api-enable'),
-          }
+          return { url: box('#profile-url'), defaultRow: box('.default-config-switch-row'), keys: box('.named-keys') }
         })
-        assert.ok(Math.abs(keyGeometry.toggle.width-keyGeometry.menu.width)<1, JSON.stringify(keyGeometry))
-        assert.ok(keyGeometry.menu.top>=keyGeometry.toggle.bottom-1, JSON.stringify(keyGeometry))
-        assert.ok(keyGeometry.menu.top>keyGeometry.enable.bottom, JSON.stringify(keyGeometry))
-        await keyToggle.click()
-        assert.equal(await keyBox.locator('.key-menu').count(), 0)
+        const defaultRowGap = Math.abs((connection.url.top+connection.url.bottom)/2-(connection.defaultRow.top+connection.defaultRow.bottom)/2)
+        assert.ok(defaultRowGap <= 8, JSON.stringify(connection))
+        assert.ok(connection.defaultRow.left >= connection.keys.left-1, JSON.stringify(connection))
+        assert.ok(connection.keys.top < connection.url.top, JSON.stringify(connection))
+        for (const index of [1, 2]) {
+          await keyBox.locator('.key-add').click()
+          await keyBox.getByLabel('新密钥名称', { exact: true }).fill('横屏补充密钥 ' + index)
+          await keyBox.getByLabel('新 API 密钥', { exact: true }).fill('synthetic-landscape-secret-' + index)
+          await keyBox.getByRole('button', { name: '添加密钥', exact: true }).click()
+          await page.waitForFunction(total => (window.keyActions || []).filter(action => action === 'add').length === total, 1+index)
+        }
+        assert.equal(await keyBox.locator('.key-more').count(), 1)
+        assert.match(await keyBox.locator('.key-more').innerText(), /查看全部 4 个密钥/)
+        const shownRows = await keyBox.locator('.key-row:visible').count()
+        assert.ok(shownRows === 1 || shownRows === 2, '页内密钥应只显示一到两条，实际 ' + shownRows)
+        await keyBox.locator('.key-more').click()
+        const keySheet = page.locator('.key-sheet')
+        await keySheet.waitFor()
+        assert.equal(await keySheet.locator('.app-sheet-option').count(), 4)
+        assert.ok((await keySheet.innerText()).includes('···· k9d2'))
+        await keySheet.locator('.app-sheet-option').nth(3).getByRole('button', { name: '删除密钥', exact: true }).click()
+        await page.waitForFunction(() => document.querySelectorAll('.key-sheet .app-sheet-option').length === 3)
+        await keySheet.locator('.app-sheet-option').nth(2).getByRole('button', { name: '删除密钥', exact: true }).click()
+        await page.waitForFunction(() => document.querySelectorAll('.key-sheet .app-sheet-option').length === 2)
+        assert.equal(await keyBox.locator('.key-more').count(), 0)
+        await keySheet.getByRole('button', { name: '完成', exact: true }).click()
+        await page.waitForFunction(() => !document.querySelector('.key-sheet'))
+        await page.evaluate(() => { window.keyActions = [] })
         await page.evaluate(() => { document.documentElement.dataset.orientation = 'portrait' })
         await keyBox.getByRole('button', { name: '收起管理', exact: true }).waitFor()
       }
@@ -203,7 +227,8 @@ try {
       assert.ok(await catalog.getByRole('button',{name:'全部显示',exact:true}).count())
       assert.ok(await catalog.getByRole('button',{name:'全部隐藏',exact:true}).count())
       await catalogToggle.click()
-      await catalog.locator('.api-model-list').waitFor()
+      if (width > height) await page.locator('.model-sheet').waitFor()
+      else await catalog.locator('.api-model-list').waitFor()
       const geometry = await page.evaluate(() => {
         const visible = element => {
           const style = getComputedStyle(element)
@@ -222,7 +247,8 @@ try {
         const details = document.querySelector('.api-profile-card:not(.new-profile) .api-profile-body')?.getBoundingClientRect()
         const creation = document.querySelector('.new-profile .api-profile-body')?.getBoundingClientRect()
         const modelToggle = document.querySelector('.api-model-list-toggle').getBoundingClientRect()
-        const modelList = document.querySelector('.api-model-list').getBoundingClientRect()
+        const modelListBox = document.querySelector('.api-model-list')
+        const modelList = modelListBox ? modelListBox.getBoundingClientRect() : null
         const modelArrow = document.querySelector('.api-model-list-toggle svg').getBoundingClientRect()
         const modelControlZ = Number.parseInt(getComputedStyle(document.querySelector('.api-model-list-control')).zIndex || '0',10)
         const testButton = document.querySelector('.api-test-connection')
@@ -243,8 +269,14 @@ try {
       }
       assert.ok(geometry.details.width <= geometry.viewport + 1)
       assert.ok(geometry.creation.width <= geometry.viewport + 1)
-      assert.ok(Math.abs(geometry.modelToggle.width-geometry.modelList.width)<1, JSON.stringify(geometry))
       assert.ok(geometry.modelArrow.right>=geometry.modelToggle.right-16, JSON.stringify(geometry))
+      if (width > height) {
+        assert.equal(geometry.modelList, null)
+        assert.equal(await page.getByPlaceholder('搜索模型').count(), 1)
+        assert.equal(await page.locator('.model-sheet .api-model-row').count(), 8)
+      } else {
+        assert.ok(Math.abs(geometry.modelToggle.width-geometry.modelList.width)<1, JSON.stringify(geometry))
+      }
       assert.equal(geometry.defaultRole,'switch')
       assert.equal(geometry.defaultText,'设置为默认配置')
       assert.ok(Math.abs(geometry.defaultTrack.width-geometry.enableSwitch.width)<=2, JSON.stringify(geometry))
@@ -252,9 +284,19 @@ try {
       if(width>height) {
         assert.equal(await catalog.getByRole('button',{name:'测试连接',exact:true}).count(),1)
         assert.ok(geometry.modelControlZ>geometry.testButtonZ, JSON.stringify(geometry))
+        const modelSheet = page.locator('.model-sheet')
+        await modelSheet.getByRole('button',{name:'全部隐藏',exact:true}).click()
+        assert.equal(await modelSheet.locator('.api-model-row [role=switch][aria-checked=true]').count(),0)
+        await modelSheet.getByRole('button',{name:'全部显示',exact:true}).click()
+        assert.equal(await modelSheet.locator('.api-model-row [role=switch][aria-checked=true]').count(),8)
+        await modelSheet.getByRole('button',{name:'完成',exact:true}).click()
+        await page.waitForFunction(()=>!document.querySelector('.model-sheet'))
+        assert.equal(await page.getByPlaceholder('搜索模型').count(),0)
+        assert.equal(await catalogToggle.getAttribute('aria-expanded'),'false')
+      } else {
+        await catalogToggle.click()
+        assert.equal(await catalog.locator('.api-model-list').count(),0)
       }
-      await catalogToggle.click()
-      assert.equal(await catalog.locator('.api-model-list').count(),0)
       assert.deepEqual(errors, [])
       console.log(`${width}x${height}-font-${fontScale}: create, details and save bounds passed`)
       await page.close()
@@ -293,6 +335,43 @@ try {
     assert.equal(await page.locator('.api-profile-card').nth(0).locator('.api-profile-body').count(),0)
     assert.equal(await page.locator('.api-profile-card').nth(1).locator('.api-advanced-section .option-sheet-trigger').isDisabled(), true)
     console.log('PASS collapsed model directory width/visibility/preservation/single-open',count)
+    await page.close()
+  }
+  {
+    const page=await browser.newPage({viewport:{width:1280,height:800}})
+    await page.addInitScript(n=>window.modelCount=n,1000)
+    await page.goto(server.resolvedUrls.local[0]+'__settings-layout')
+    await page.locator('.api-profile-expand').first().click()
+    await page.evaluate(()=>{document.documentElement.dataset.orientation='landscape'})
+    const catalog=page.locator('.api-model-management')
+    const toggle=catalog.locator('.api-model-list-toggle')
+    const sheet=page.locator('.model-sheet')
+    assert.equal(await toggle.getAttribute('aria-expanded'),'false')
+    assert.equal(await catalog.locator('.api-model-list').count(),0)
+    await toggle.click()
+    await sheet.waitFor()
+    assert.equal(await toggle.getAttribute('aria-expanded'),'true')
+    assert.equal(await sheet.locator('.api-model-row').count(),1000)
+    const metrics=await page.evaluate(()=>{
+      const list=document.querySelector('.model-sheet .app-sheet-list'),rect=list.getBoundingClientRect(),frame=document.querySelector('.model-sheet').getBoundingClientRect()
+      return {scrollHeight:list.scrollHeight,clientHeight:list.clientHeight,top:rect.top,bottom:rect.bottom,left:frame.left,right:frame.right,viewportHeight:innerHeight,viewportWidth:innerWidth}
+    })
+    assert.ok(metrics.scrollHeight>metrics.clientHeight,JSON.stringify(metrics))
+    assert.ok(metrics.top>=-1&&metrics.bottom<=metrics.viewportHeight+1,JSON.stringify(metrics))
+    assert.ok(metrics.left>=-1&&metrics.right<=metrics.viewportWidth+1,JSON.stringify(metrics))
+    await sheet.getByPlaceholder('搜索模型').fill('model-999')
+    assert.equal(await sheet.locator('.api-model-row').count(),1)
+    assert.match(await sheet.locator('.api-model-row').innerText(),/合成模型/)
+    await sheet.getByPlaceholder('搜索模型').fill('没有这个模型')
+    assert.equal(await sheet.locator('.api-model-row').count(),0)
+    assert.equal(await sheet.locator('.app-sheet-empty').count(),1)
+    await sheet.getByPlaceholder('搜索模型').fill('')
+    assert.equal(await sheet.locator('.api-model-row').count(),1000)
+    await sheet.getByRole('button',{name:'完成',exact:true}).click()
+    await page.waitForFunction(()=>!document.querySelector('.model-sheet'))
+    assert.equal(await toggle.getAttribute('aria-expanded'),'false')
+    assert.equal(await page.getByPlaceholder('搜索模型').count(),0)
+    console.log('PASS landscape model sheet overflow/search/close')
     await page.close()
   }
 } finally {

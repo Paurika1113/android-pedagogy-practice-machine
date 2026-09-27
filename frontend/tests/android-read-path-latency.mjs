@@ -218,8 +218,15 @@ assert.equal(reviewRows.items.length, 1)
 const warmed = reviewRows.items[0]
 assert.equal(warmed.review_detail.latest_sentence, 'He went home yesterday.', '首批卡必须预热原句')
 assert.equal(warmed.review_detail.common_meaning, '去（过去式）', '首批卡必须预热常用释义')
-assert.equal(warmed.review_detail.memory_hint, '联想：go 的过去式', '首批卡必须预热记忆提示')
-assert.deepEqual([...warmed.review_detail.local_similar], [], '首批复习卡不得计算本地相似词')
+// 每日一背只显示「常用释义 + 真题原句」，设置页的 11 个显示项只作用于单词本首页卡片，
+// 所以复习卡详情不能回传展开内容：界面读不到就不该过桥，也不该为它整本词库扫描相似词。
+assert.deepEqual(Object.keys(warmed.review_detail).sort(),
+  ['common_meaning', 'contextual_meaning', 'latest_sentence', 'occurrences'],
+  '复习卡详情只含释义与原句两组字段')
+for (const field of ['memory_hint', 'synonyms', 'antonyms', 'similar_forms', 'local_similar',
+  'morphology', 'generated_example', 'note', 'part_of_speech', 'lemma']) {
+  assert.ok(!(field in warmed.review_detail), `复习卡详情不得回传界面不显示的 ${field}`)
+}
 assert.ok(!('review_detail' in dueItem), '后续 queue 投影仍保持极小载荷')
 assert.equal(warmReviewCalls.length, 3, '首批复习卡只允许词条、计数、批量出现记录三次读取')
 assert.equal(warmReviewCalls.filter(sql => /FROM vocabulary_occurrences/i.test(sql)).length, 1, '出现记录必须一次批量读取')

@@ -6,7 +6,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { del, get, post, put } from '../api'
 import { confirmDialog } from '../platform/dialogs'
-import { loadVocabDisplayConfig } from '../services/vocabularyDisplayConfig'
+import { VOCAB_REVIEW_DISPLAY_CONFIG, loadVocabDisplayConfig } from '../services/vocabularyDisplayConfig'
 import { reconcileDueQueue, orderedDueKeys, completeDueWord, wordKey, type DueQueue } from '../vocabulary-due-queue'
 import { nextTick } from 'vue'
 import { platformRuntime } from '../platform/runtime'
@@ -436,8 +436,9 @@ watch(() => [reviewMode.value, reviewWord.value ? wordKey(reviewWord.value) : ''
 }, { immediate:true, flush:'sync' })
 watch(() => [reviewMode.value, reviewWord.value?.id || 0], () => { void ensureReviewDetails() })
 const displayConfig = ref(loadVocabDisplayConfig())
-const reviewDisplayConfig = computed(() => landscape.value
-  ? { ...displayConfig.value, phonetic: false, morphology: false, note: false } : displayConfig.value)
+// 每日一背只显示「常用释义 + 真题原句」：复习卡读服务层的固定契约，设置页的显示项
+// 只作用于单词本首页的单词学习卡片，因此设置里怎么改都不会改变复习卡内容。
+const reviewDisplayConfig = VOCAB_REVIEW_DISPLAY_CONFIG
 const expandedAll = ref(true)
 const expansionToken = ref(0)
 const enrichment = ref<any>(null)

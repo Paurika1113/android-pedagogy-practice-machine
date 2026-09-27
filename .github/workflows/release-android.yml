@@ -59,13 +59,9 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
-          pnpm run test:all -- --standalone
+          pnpm run test:all
           pnpm run build
           pnpm exec cap sync android
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-          log-accepted-android-sdk-licenses: false
       - name: Prepare Android SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - name: Restore release signing
