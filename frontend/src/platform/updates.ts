@@ -19,6 +19,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+/** 失败提示里带上响应的顶层结构，用户自己就能看出填错了哪种地址。 */
+function describeJsonShape(value: unknown): string {
+  if (Array.isArray(value)) return `数组（${value.length} 项）`
+  if (!isRecord(value)) return typeof value
+  const keys = Object.keys(value)
+  return keys.length ? `字段 ${keys.slice(0, 8).join('、')}${keys.length > 8 ? '…' : ''}` : '空对象'
+}
+
+function looksLikeUpdateManifest(value: unknown): boolean {
+  return isRecord(value)
+    && value.schemaVersion === 1
+    && typeof value.channel === 'string'
+    && typeof value.apkUrl === 'string'
+}
+
+function describeSourceHost(url: string): string {
+  try { return new URL(url).host } catch { return url }
+}
+
 function assertManifest(value: unknown): asserts value is UpdateManifest {
   if (!isRecord(value)
     || value.schemaVersion !== 1
@@ -102,7 +121,11 @@ function normalizeCatalogPackage(item: unknown, index: number): QuestionBankRemo
 
 export function validateQuestionBankCatalog(value: unknown): QuestionBankRemoteCatalog {
   if (!isRecord(value) || value.catalogVersion !== 1 || !Array.isArray(value.packages)) {
-    throw new UpdateManifestError('题库目录 catalogVersion 或 packages 不受支持')
+    // 更新清单和题库目录都是 JSON：填错地址时必须能一眼看出是哪种文件。
+    if (looksLikeUpdateManifest(value)) {
+      throw new UpdateManifestError('这个地址返回的是程序更新清单，不是题库目录；请填写题库目录地址')
+    }
+    throw new UpdateManifestError(`题库目录 catalogVersion 或 packages 不受支持（收到的 JSON：${describeJsonShape(value)}）`)
   }
   if (value.packages.length > MAX_CATALOG_PACKAGES) throw new UpdateManifestError('题库目录 packages 超过 500 项')
   const packages = value.packages.map(normalizeCatalogPackage)
@@ -121,7 +144,9 @@ export async function fetchQuestionBankCatalog(url: string): Promise<QuestionBan
   const response = await CapacitorHttp.get({
     url: sourceUrl,
     headers: { Accept: 'application/json' },
-    connectTimeout: 10000,
+    // 现场实测：受限网络里直连源会卡满连接超时。目录有多个候选源，
+    // 4 秒足够建连，能省下约 26 秒白等，也会更快落到可用的代理源。
+    connectTimeout: 4000,
     readTimeout: 30000,
   }).catch(remoteRequestFailure)
   if (response.status < 200 || response.status >= 300) {
@@ -157,7 +182,7 @@ export async function fetchQuestionBankCatalogFromSources(
       const catalog = await fetchQuestionBankCatalog(sources[index])
       return { ...catalog, sourceUrl: sources[index], checkedSources: index + 1 }
     } catch (error) {
-      failures.push(String(error instanceof Error ? error.message : error))
+      failures.push(`${describeSourceHost(sources[index]!)}：${String(error instanceof Error ? error.message : error)}`)
       codes.push(error instanceof JsonResponseError ? error.code : 'REMOTE_NETWORK')
     }
   }

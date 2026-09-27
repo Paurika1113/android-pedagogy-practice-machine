@@ -27,6 +27,28 @@ public final class EsqImportPlugin extends Plugin {
         } catch (Exception ignored) { selectedUri = null; }
     }
 
+    /**
+     * OutOfMemoryError extends Error, not Exception. Letting it escape this executor thread kills the
+     * whole process (the "import page closes instantly" failure), so report it as a normal rejection.
+     */
+    private static String failureMessage(Throwable error) {
+        if (error instanceof OutOfMemoryError) {
+            return "设备内存不足，无法解析该题库包；请关闭其他应用后重试，或改用较小的题库包";
+        }
+        String message = error.getMessage();
+        return message == null || message.isEmpty() ? error.getClass().getSimpleName() : message;
+    }
+
+    private static void reject(PluginCall call, Throwable error) {
+        String message = failureMessage(error);
+        if (error instanceof Exception) {
+            call.reject(message, (Exception) error);
+        } else {
+            Logger.error("EsqImport", message, error);
+            call.reject(message);
+        }
+    }
+
     @PluginMethod public void stageSelected(PluginCall call) {
         final Uri uri;
         final long size;
@@ -47,28 +69,35 @@ public final class EsqImportPlugin extends Plugin {
                     .put("profileId", call.getData().opt("profileId"))
                     .put("newProfileName", call.getData().opt("newProfileName"));
                 call.resolve(JSObject.fromJSONObject(EsqStage.receive(source, size, getContext().getFilesDir(), request)));
-            } catch (Exception error) { call.reject(error.getMessage(), error); }
+            } catch (Throwable error) { reject(call, error); }
         });
     }
 
     @PluginMethod public void pending(PluginCall call) {
         executor.execute(() -> {
             try { call.resolve(JSObject.fromJSONObject(new org.json.JSONObject().put("tasks", EsqStage.pending(getContext().getFilesDir())))); }
-            catch (Exception error) { call.reject(error.getMessage(), error); }
+            catch (Throwable error) { reject(call, error); }
         });
     }
 
     @PluginMethod public void acknowledge(PluginCall call) {
         executor.execute(() -> {
             try { EsqStage.acknowledge(getContext().getFilesDir(), call.getString("stageId")); call.resolve(); }
-            catch (Exception error) { call.reject(error.getMessage(), error); }
+            catch (Throwable error) { reject(call, error); }
         });
     }
 
     @PluginMethod public void resume(PluginCall call) {
         executor.execute(() -> {
             try { call.resolve(JSObject.fromJSONObject(EsqStage.resume(getContext().getFilesDir(), call.getString("stageId")))); }
-            catch (Exception error) { call.reject(error.getMessage(), error); }
+            catch (Throwable error) { reject(call, error); }
+        });
+    }
+
+    @PluginMethod public void discard(PluginCall call) {
+        executor.execute(() -> {
+            try { EsqStage.discard(getContext().getFilesDir(), call.getString("stageId")); call.resolve(); }
+            catch (Throwable error) { reject(call, error); }
         });
     }
 
@@ -77,7 +106,8 @@ public final class EsqImportPlugin extends Plugin {
             try {
                 call.resolve(JSObject.fromJSONObject(EsqStage.read(getContext().getFilesDir(), call.getString("stageId"),
                     call.getInt("paper", -1), call.getInt("unit", -1), call.getInt("question", -1))));
-            } catch (Exception error) { call.reject(error.getMessage(), error); }
+            } catch (Throwable error) { reject(call, error); }
         });
     }
 }
+

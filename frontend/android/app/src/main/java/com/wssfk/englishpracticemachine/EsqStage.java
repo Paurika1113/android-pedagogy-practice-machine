@@ -69,10 +69,35 @@ final class EsqStage {
         if (tasks == null) return result;
         for (File dir : tasks) {
             if (!dir.getName().matches("[a-f0-9]{64}") || !new File(dir, "source.esq").isFile()) continue;
-            try { result.put(readRecord(new File(dir, "request.json")).put("stageId", dir.getName())); }
+            try {
+                File archive = new File(dir, "source.esq");
+                JSONObject entry = readRecord(new File(dir, "request.json")).put("stageId", dir.getName());
+                entry.put("ready", new File(dir, "ready.json").isFile());
+                entry.put("phase", phase(dir));
+                entry.put("archiveBytes", archive.length());
+                entry.put("stagedAt", archive.lastModified());
+                result.put(entry);
+            }
             catch (Exception invalidRequest) { /* incomplete receipts are not recoverable jobs */ }
         }
         return result;
+    }
+
+    /** Reports the last known parse phase so the caller can stop retrying a task that already failed. */
+    private static String phase(File task) {
+        try { return String.valueOf(readRecord(new File(task, "state.json")).optString("phase", "unknown")); }
+        catch (Exception missingState) { return "unknown"; }
+    }
+
+    /** Removes one staged task. Used by the explicit "discard" action and by stale-failure cleanup. */
+    static synchronized void discard(File root, String id) throws Exception {
+        if (id == null || !id.matches("[a-f0-9]{64}")) throw new SecurityException("暂存任务标识无效");
+        File dir = task(root, id);
+        if (!dir.isDirectory()) return;
+        try (DirectoryStream<Path> entries = Files.newDirectoryStream(dir.toPath())) {
+            for (Path entry : entries) Files.deleteIfExists(entry);
+        }
+        Files.deleteIfExists(dir.toPath());
     }
 
     static synchronized void acknowledge(File root, String id) throws Exception {
@@ -92,6 +117,15 @@ final class EsqStage {
         }
         File archive = new File(task, "source.esq");
         if (!EsqArchive.hashExisting(archive, archive.length()).equals(id)) throw new SecurityException("保留的 ESQ 文件校验失败，请重新选择题包");
+        // Large archives expand into far more JSON than their file size; fail with a readable
+        // message instead of letting the parse exhaust the heap and kill the process.
+        Runtime runtime = Runtime.getRuntime();
+        long freeHeap = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory());
+        long requiredHeap = Math.min(archive.length(), 64L * 1024 * 1024) * 2L;
+        if (freeHeap < requiredHeap) {
+            throw new IOException("设备可用内存不足，无法解析该题库包（需要约 " + (requiredHeap / (1024 * 1024))
+                + " MiB，当前 " + (freeHeap / (1024 * 1024)) + " MiB）；请关闭其他应用后重试，或改用较小的题库包");
+        }
         writeRecord(new File(task, "state.json"), new JSONObject().put("phase", "parsing"));
         try {
             Files.deleteIfExists(ready.toPath());

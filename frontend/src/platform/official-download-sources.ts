@@ -1,6 +1,18 @@
 const OLD_RELEASE = 'https://github.com/wssfk12138/english-multiple-choice-practice-machine/releases/download/question-banks-v1.2.0/'
 const BANK_RELEASES = 'https://github.com/wssfk12138/english-question-banks/releases/download/'
 export const OFFICIAL_CATALOG = 'https://raw.githubusercontent.com/wssfk12138/english-question-banks/main/question-bank-catalog.json'
+/**
+ * 规范地址不可达时的同源备用入口（2026-09-28 实测三条都可读且内容一致）：
+ * 独立题库仓库的固定 Release 目录，以及迁移前的旧目录入口（仍在同步维护）。
+ * 只追加在代理之后，避免在直连被挡的网络里多等两轮连接超时。
+ */
+export const OFFICIAL_CATALOG_FALLBACKS = [
+  BANK_RELEASES + 'question-banks-2026-09-20/question-bank-catalog.json',
+  OLD_RELEASE + 'question-bank-catalog.json',
+]
+
+// 这里只用于"识别存量官方别名"：老版本把官方默认地址写进了设置，
+// 命中即按官方链处理。列表项本身不参与下载，失效的别名保留是为了不误判成第三方地址。
 export const LEGACY_OFFICIAL_CATALOGS = [
   OLD_RELEASE + 'question-bank-catalog.json',
   'https://github.com/wssfk12138/english-multiple-choice-practice-machine/releases/latest/download/question-bank-catalog.json',

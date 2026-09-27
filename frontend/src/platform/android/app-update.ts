@@ -5,7 +5,7 @@ import { LocalApiError } from './errors'
 import { JsonResponseError } from '../json-response.ts'
 import { fetchQuestionBankCatalogFromSources, fetchUpdateManifest, resolveQuestionBankCatalogSources, validateQuestionBankRemoteUrl } from '../updates'
 import { createEsqImportFromNativePackage } from './question-bank'
-import { officialDownloadSources, withOfficialDownloadFallback, OFFICIAL_CATALOG, LEGACY_OFFICIAL_CATALOGS } from '../official-download-sources'
+import { officialDownloadSources, withOfficialDownloadFallback, OFFICIAL_CATALOG, OFFICIAL_CATALOG_FALLBACKS, LEGACY_OFFICIAL_CATALOGS } from '../official-download-sources'
 
 type JsonRecord = Record<string, any>
 
@@ -55,6 +55,9 @@ async function questionBankCatalog() {
     controlledMirrorUrls: [
       ...CONTROLLED_QUESTION_BANK_MIRROR_URLS,
       ...officialDownloadSources(BUILD_DEFAULTS.question_bank_catalog_url!, BUILD_DEFAULTS.question_bank_catalog_url === OFFICIAL_CATALOG).slice(1),
+      // 同源备用入口只属于"规范地址"这条默认链，排在代理之后；
+      // 自定义构建的官方地址与第三方地址都不应被追加。
+      ...(BUILD_DEFAULTS.question_bank_catalog_url === OFFICIAL_CATALOG ? OFFICIAL_CATALOG_FALLBACKS : []),
     ],
     thirdPartyUrl: usesOfficialSources ? '' : storedUrl,
   })

@@ -399,27 +399,100 @@ export async function installBundledQuestionBanks(): Promise<JsonRecord> {
 }
 
 let recoverPendingPromise: Promise<void> | undefined
-async function recoverPendingImports(): Promise<void> {
+// 暂存解析是在原生侧把整包读进内存：四六级包 429/845 MiB，很容易把应用内存吃穿。
+// 因此只自动重试"小包、且没失败过"的任务；失败过的任务 ready.json 永远写不成，
+// 每次打开导入页都自动重试就会变成"一进导入页就闪退"的循环。
+const AUTO_RESUME_STAGE_BYTES = 32 * 1024 * 1024
+const STALE_STAGE_TASK_MS = 7 * 24 * 60 * 60 * 1000
+
+async function stagedTaskDraftId(task: JsonRecord): Promise<number> {
+  const existing = await row<JsonRecord>(
+    `SELECT j.id FROM esq_import_jobs j JOIN question_bank_profiles p ON p.id = j.profile_id
+     WHERE json_extract(j.package_data, '$.stageId') = ?
+       AND ((? IS NOT NULL AND j.profile_id = ?) OR (? IS NOT NULL AND p.name = ? COLLATE NOCASE)) LIMIT 1`,
+    [task.stageId, task.profileId ?? null, task.profileId ?? null, task.newProfileName ?? null, task.newProfileName ?? null],
+  )
+  return Number(existing?.id || 0)
+}
+
+/**
+ * 整理原生暂存区，返回"还没有对应草稿"的任务。
+ * 只做登记与清理，不解析任何压缩包，因此可以在启动阶段安全调用。
+ */
+async function sweepStagedEsqTasks(): Promise<JsonRecord[]> {
   const { nativeEsqStage } = await import('./esq-stage')
   const { tasks } = await nativeEsqStage.pending()
+  const unresolved: JsonRecord[] = []
+  const now = Date.now()
   for (const task of tasks) {
-    const existing = await row<JsonRecord>(
-      `SELECT j.id FROM esq_import_jobs j JOIN question_bank_profiles p ON p.id = j.profile_id
-       WHERE json_extract(j.package_data, '$.stageId') = ?
-         AND ((? IS NOT NULL AND j.profile_id = ?) OR (? IS NOT NULL AND p.name = ? COLLATE NOCASE)) LIMIT 1`,
-      [task.stageId, task.profileId ?? null, task.profileId ?? null, task.newProfileName ?? null, task.newProfileName ?? null],
-    )
-    if (existing) {
-      await nativeEsqStage.acknowledge({ stageId: task.stageId })
+    if (await stagedTaskDraftId(task)) {
+      try { await nativeEsqStage.acknowledge({ stageId: task.stageId }) } catch { /* 记录清理失败不影响主流程 */ }
       continue
     }
+    const stagedAt = Number(task.stagedAt || 0)
+    const abandoned = stagedAt > 0 && now - stagedAt > STALE_STAGE_TASK_MS
+    const destinationGone = Boolean(task.profileId)
+      && !await row('SELECT id FROM question_bank_profiles WHERE id = ? AND deleted_at IS NULL', [task.profileId])
+    // 失败的任务既占着几百 MiB 的副本、又永远解析不成，过期后清掉；目标配置已删除的同样无法落地。
+    if (abandoned && (task.phase === 'failed' || destinationGone)) {
+      try { await nativeEsqStage.discard({ stageId: task.stageId }) } catch { /* 清理失败下次启动再试 */ }
+      continue
+    }
+    unresolved.push(task)
+  }
+  return unresolved
+}
+
+async function recoverPendingImports(): Promise<void> {
+  const { nativeEsqStage } = await import('./esq-stage')
+  for (const task of await sweepStagedEsqTasks()) {
+    // 已解析过、解析失败过、或体积过大的任务都交给导入页的显式入口处理。
+    if (task.ready || task.phase === 'failed') continue
+    if (Number(task.archiveBytes || 0) > AUTO_RESUME_STAGE_BYTES) continue
     // Keep the original destination; a deleted destination is not silently replaced.
     if (task.profileId && !await row('SELECT id FROM question_bank_profiles WHERE id = ? AND deleted_at IS NULL', [task.profileId])) continue
     try {
       const summary = await nativeEsqStage.resume({ stageId: task.stageId })
       await saveNativeEsqPackage(task.filename, summary, task.profileId, task.newProfileName)
-    } catch { /* retain invalid/incomplete tasks for explicit re-selection and retry */ }
+    } catch { /* 保留任务，交给导入页的“继续解析 / 删除”入口 */ }
   }
+}
+
+/** 未完成的暂存任务（还没有草稿行）；只读，不解析压缩包。 */
+export async function listStagedEsqTasks(): Promise<JsonRecord[]> {
+  return (await sweepStagedEsqTasks()).map(task => ({
+    stage_id: String(task.stageId || ''),
+    filename: String(task.filename || ''),
+    profile_id: task.profileId ?? null,
+    new_profile_name: task.newProfileName ?? null,
+    phase: String(task.phase || 'unknown'),
+    ready: Boolean(task.ready),
+    archive_bytes: Number(task.archiveBytes || 0),
+    staged_at: Number(task.stagedAt || 0),
+  }))
+}
+
+/** 显式继续解析一个暂存任务（大包只允许走这条路，避免自动重试造成崩溃循环）。 */
+export async function resumeStagedEsqTask(stageId: string): Promise<JsonRecord> {
+  const id = String(stageId || '').trim()
+  if (!/^[a-f0-9]{64}$/.test(id)) throw new LocalApiError(400, '暂存任务标识无效')
+  const task = (await sweepStagedEsqTasks()).find(item => String(item.stageId) === id)
+  if (!task) throw new LocalApiError(404, '该暂存任务已不存在，请刷新后重试')
+  const { nativeEsqStage } = await import('./esq-stage')
+  const summary = await nativeEsqStage.resume({ stageId: id })
+  const created = await saveNativeEsqPackage(String(task.filename || ''), summary, task.profileId, task.newProfileName)
+  recoverPendingPromise = undefined
+  return created
+}
+
+/** 删除一个暂存任务（含保留的源包）。 */
+export async function discardStagedEsqTask(stageId: string): Promise<JsonRecord> {
+  const id = String(stageId || '').trim()
+  if (!/^[a-f0-9]{64}$/.test(id)) throw new LocalApiError(400, '暂存任务标识无效')
+  const { nativeEsqStage } = await import('./esq-stage')
+  await nativeEsqStage.discard({ stageId: id })
+  recoverPendingPromise = undefined
+  return { discarded: true }
 }
 
 export async function listEsqImports(): Promise<JsonRecord[]> {

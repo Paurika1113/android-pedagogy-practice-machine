@@ -5,7 +5,7 @@ import { analyzeWrongQuestions, analyzeWrongStatus, createProfile, createConvers
 import { LocalApiError } from './errors'
 import { chooseSnapshot } from './practice-snapshots'
 import { abandonIfEmpty, archiveWrongUnits, createSession, dashboard, getSession, listWrong, saveAnswer, submitSession, submitUnit } from './practice'
-import { createEsqImport, listEsqImports, listPapers, publishEsqImport, readEsqImport, sweepEmptyPaperSessions } from './question-bank'
+import { createEsqImport, discardStagedEsqTask, listEsqImports, listStagedEsqTasks, listPapers, publishEsqImport, readEsqImport, resumeStagedEsqTask, sweepEmptyPaperSessions } from './question-bank'
 import { addVocabulary, deleteVocabulary, homeVocabulary, listVocabulary, reviewVocabulary, retryVocabulary, serializeEntry, updateVocabulary, vocabularyRevision, vocabularyStatus } from './vocabulary'
 import { checkAppUpdate, checkQuestionBankCatalog, downloadQuestionBankPackage, installAppUpdate, readUpdateSettings, updateSettings } from './app-update'
 import {
@@ -73,6 +73,24 @@ function scheduleEmptyPaperSweep() {
   else run()
 }
 
+let stagedTaskSweepStarted = false
+function scheduleStagedTaskSweep() {
+  if (stagedTaskSweepStarted) return
+  stagedTaskSweepStarted = true
+  // 枚举暂存任务、登记已有草稿、清掉过期失败副本；全程不解析压缩包，
+  // 所以放在启动空闲期是安全的，也不会把失败任务变成本进程的重试风暴。
+  // 动态导入 + 可选调用：测试沙箱里的 ./question-bank 是受控映射，
+  // 缺少这个新导出时不能把本地接口一起打崩。
+  const run = () => void import('./question-bank')
+    .then(module => module.listStagedEsqTasks?.())
+    .catch(() => {})
+  const idle = (globalThis as any).requestIdleCallback as ((callback: () => void, options?: { timeout: number }) => number) | undefined
+  const delay = (globalThis as any).setTimeout as ((callback: () => void, timeout: number) => number) | undefined
+  if (typeof idle === 'function') idle(run, { timeout: 3000 })
+  else if (typeof delay === 'function') delay(run, 2000)
+  else run()
+}
+
 export async function androidLocalApi<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = String(options.method || 'GET').toUpperCase()
   const url = new URL(path, 'https://local.english-practice.invalid')
@@ -93,6 +111,7 @@ export async function androidLocalApi<T>(path: string, options: RequestInit = {}
   // Empty-session cleanup is process-wide maintenance. Re-triggering it from
   // every local API call created needless bridge traffic during first screen.
   scheduleEmptyPaperSweep()
+  scheduleStagedTaskSweep()
   let params: RegExpMatchArray | null
 
   if (method === 'GET' && pathname === '/study-todos') return await studyTodos() as T
@@ -172,6 +191,15 @@ export async function androidLocalApi<T>(path: string, options: RequestInit = {}
       file, Number(options.body.get('profile_id') || 0) || undefined,
       newName === null ? undefined : String(newName),
     ) as T
+  }
+  if (pathname === '/question-banks/imports/staged' && method === 'GET') {
+    return await listStagedEsqTasks() as T
+  }
+  if (pathname === '/question-banks/imports/staged/resume' && method === 'POST') {
+    return await resumeStagedEsqTask(String(body?.stage_id || '')) as T
+  }
+  if (pathname === '/question-banks/imports/staged/discard' && method === 'POST') {
+    return await discardStagedEsqTask(String(body?.stage_id || '')) as T
   }
   params = match(pathname, /^\/question-banks\/imports\/(\d+)$/)
   if (params && method === 'GET') return await readEsqImport(Number(params[1])) as T
