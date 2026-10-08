@@ -11,7 +11,7 @@ android {
     namespace = "com.wssfk.englishpracticemachine"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.wssfk.englishpracticemachine"
+        applicationId "com.edu.pedagogy.practicemachine"
         // Apache POI uses MethodHandle APIs that Android supports natively
         // from API 26. The primary target is Android 14, and Android 8.0+
         // remains a practical compatibility floor for this document-import build.

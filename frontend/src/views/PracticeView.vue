@@ -1329,8 +1329,15 @@ async function copySelectedTerm() {
             <span class="option-letter">{{ option.label }}</span>
             <span class="option-content" data-vocab-text><ContentBlocks v-if="option.content_blocks?.length" :blocks="option.content_blocks" :package-id="activeContentPackage.packageId" :content-version="activeContentPackage.contentVersion" /><template v-else>{{ option.content }}</template></span>
           </button>
-          <div v-if="activeUnitSubmitted" style="margin-top:10px;font-size:13px" :style="{color:question.is_correct?'var(--success)':'var(--danger)'}">
-            <CheckCircle2 :size="15" style="vertical-align:-2px" /> {{ question.is_correct ? '回答正确' : '回答错误' }}
+          <div v-if="activeUnitSubmitted" class="pedagogy-analysis-box" style="margin-top:12px;padding:12px 14px;border-radius:10px;background:rgba(0,0,0,0.03);font-size:13px;line-height:1.6">
+            <div style="font-weight:600;margin-bottom:4px" :style="{color:question.is_correct?'var(--success)':'var(--danger)'}">
+              <CheckCircle2 :size="15" style="vertical-align:-2px" /> {{ question.is_correct ? '回答正确' : '回答错误' }}
+              <span v-if="!question.is_correct && question.answer" style="margin-left:8px;color:var(--text-muted)">正确答案：{{ question.answer }}</span>
+              <span v-if="question.metadata?.src" style="margin-left:8px;font-weight:normal;color:var(--text-muted)">({{ question.metadata.src }})</span>
+            </div>
+            <div v-if="question.metadata?.explanation" style="color:var(--text);white-space:pre-wrap;margin-top:6px">
+              <strong>【考点解析】</strong>{{ question.metadata.explanation }}
+            </div>
           </div>
         </div>
       </section>

@@ -290,13 +290,13 @@ onBeforeUnmount(() => {
     <aside class="sidebar" v-if="!route.path.startsWith('/practice')">
       <RouterLink class="brand" to="/">
         <span class="brand-mark"><img src="/assets/icons/brand-mark.png" alt="" /></span>
-        <span class="brand-copy"><strong>英语刷题机</strong><small>考研英语一 · 本地题库</small></span>
+        <span class="brand-copy"><strong>教育学刷题机</strong><small>福建教综 · 本地客观题特训</small></span>
       </RouterLink>
       <nav class="primary-nav" aria-label="主要导航">
         <RouterLink to="/"><img src="/assets/icons/home.png" alt="" /><span>首页</span></RouterLink>
         <RouterLink to="/library"><img src="/assets/icons/paper.png" alt="" /><span>题库与练习</span></RouterLink>
         <RouterLink to="/wrong"><img src="/assets/icons/wrong-book.png" alt="" /><span>错题本</span></RouterLink>
-        <RouterLink to="/vocabulary"><img src="/assets/icons/vocabulary.png" alt="" /><span>单词本</span></RouterLink>
+        <RouterLink to="/vocabulary"><img src="/assets/icons/vocabulary.png" alt="" /><span>考点速记</span></RouterLink>
         <RouterLink to="/imports"><img src="/assets/icons/import.png" alt="" /><span>导入题库</span></RouterLink>
         <RouterLink to="/assistant"><img src="/assets/icons/ai.png" alt="" /><span>AI 学习助手</span></RouterLink>
         <RouterLink to="/mobile-settings"><Settings2 :size="22" /><span>设置</span></RouterLink>
@@ -310,7 +310,7 @@ onBeforeUnmount(() => {
       </nav>
       <div class="sidebar-note">
         <BookOpenText :size="18" />
-        <p>慢一点读，答案常藏在句子之间。</p>
+        <p>博学之，审问之，慎思之，明辨之，笃行之。</p>
       </div>
       <button class="theme-button" type="button" @click="toggleTheme" :aria-label="dark ? '切换到浅色模式' : '切换到夜间模式'">
         <Sun v-if="dark" :size="18" /><Moon v-else :size="18" />

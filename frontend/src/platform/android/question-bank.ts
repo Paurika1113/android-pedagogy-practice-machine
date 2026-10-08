@@ -328,7 +328,7 @@ async function saveNativeEsqPackage(
 }
 
 async function bundledProfileId(subject: string): Promise<number> {
-  const name = subject.includes('英语二') ? '考研英语二' : '考研英语一'
+  const name = subject.includes('教育学') ? '教育学基础' : subject
   const existing = await row<{ id: number }>(
     'SELECT id FROM question_bank_profiles WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL LIMIT 1',
     [name],
@@ -336,7 +336,7 @@ async function bundledProfileId(subject: string): Promise<number> {
   if (existing) return Number(existing.id)
   const created = await run(
     'INSERT INTO question_bank_profiles(name, description, is_default) VALUES (?, ?, 0)',
-    [name, `公测版内置${name}题库`],
+    [name, `内置${name}客观题特训题库`],
   )
   return Number(created.lastId)
 }
@@ -387,8 +387,7 @@ export async function installBundledQuestionBank(
 
 export async function installBundledQuestionBanks(): Promise<JsonRecord> {
   const assets = [
-    { path: 'internal-question-bank.esq', subject: '考研英语一' },
-    { path: 'internal-question-bank-english-two.esq', subject: '考研英语二' },
+    { path: 'internal-question-bank.esq', subject: '教育学基础' },
   ]
   const results: JsonRecord[] = []
   for (const asset of assets) {

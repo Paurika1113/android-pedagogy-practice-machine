@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'com.wssfk.englishpracticemachine',
-  appName: '英语刷题机',
+  appId: 'com.edu.pedagogy.practicemachine',
+  appName: '教育学刷题机',
   webDir: 'dist',
   android: {
     backgroundColor: '#f3f0e8',

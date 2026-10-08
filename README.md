@@ -1,24 +1,30 @@
 <div align="center">
 
-  <img src="frontend/public/assets/icons/brand-mark.png" alt="英语刷题机 Logo" width="96">
+  <img src="frontend/public/assets/icons/brand-mark.png" alt="教育学刷题机 Logo" width="96">
 
-  # 英语刷题机 Android
+  # 教育学刷题机 Android
 
   **题库自由 · 模型自由 · 数据本地 · 自由刷题**
 
-  面向 Android 手机、平板的英语客观题训练应用
+  面向 Android 手机、平板的福建教综·教育学客观题训练与复习应用
 
   <p>
-    <a href="README.en.md">English</a> ·
     <a href="docs/question-bank-format.md">ESQ 题库格式</a> ·
     <a href="docs/update-manifest.md">更新清单格式</a> ·
     <a href="LICENSE">GPL-3.0-only</a>
   </p>
 </div>
 
-> 如果你正在寻找稳定、实惠的 AI 模型中转服务，可以试试 [FastAiToken](https://www.fastaitoken.com/register?aff=BF9KNKFHX725)，也可以先阅读[中转站新手帮助文档](https://github.com/wssfk12138/fastaitoken-beginner-guide)了解中转站、倍率、计费和使用方式。你在 FastAiToken 中的每一笔消费都会让作者获得一定数量的返利，我会把它转化为 Token，继续开发更多新项目并上传至 GitHub。当前所有项目均使用了 FastAiToken 提供的 5.6 Sol 模型参与开发。**注册后点击右上角用户头像前往QQ客服群@群主可领3刀试用金（需提供用户id，暗号：GitHub来的）。** <a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/badge/FastAI-%E7%82%B9%E5%87%BB%E6%B3%A8%E5%86%8C-4F7CFF.svg?logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAABYlAAAWJQFJUiTwAAABmUlEQVRYw%2B2Vv0tbURTHP%2BfmvcS8lx%2BYKrZ16modFbQiKrgWuujQpZtgqV3s0rGT4N9Q6NJBM0nWUoe6uSj4BxQKUnBSSPISk3tPB1%2BhS42JFqHcD1wuXM79fs89HM4Fj8fjuWdk4Jubl9PEUiEC4nSV0r0cQATkgBIHjEvzbzLBIN7mrd11JVkBoJgeZgSMghGw%2Bjv0kHEzc61W3%2B7r3Zcuk5oDNP8oogKamlvp0O6u95LrrwKvtYDRbQRoiSWrX7DawoniABVQFVTbtOwn5rJHd5uA7c6SMd8QA44aH8zO%2FTThG30sea1qzCMKQCFtwBJIkZ8ayxJT0rmJ1EBNSKAf1fCMDCAComn5QRP7noWgc2OpnhFrGrKM45in1NsJJtxgSBYIFIQGqidYFIslcXs8D6p9vaVnxESjwlk8ghAR5baARbKaJycK3Re8C7%2FepgeuT6CaPMENhZzbScZkngszSaB5ALLuM5u3M%2B89B1bz36%2FMkn0i84BRflDGMkyN0Gz8%2B1FcrT%2Fkst3EVoq8klP%2Fc3k8Hs9%2FyS8IrHi9DaVvuAAAAABJRU5ErkJggg%3D%3D" alt="fastai 点击注册"></a>
+教育学刷题机 Android 基于开源刷题机架构深度改造，专为教师招聘考试（福建教综·教育学基础）量身定制。默认内置 **879 道真题单选精练（覆盖 10 大核心章节，附带完整考点解析与真题年份来源）**。具备纯本地离线刷题、即时解析呈现、错题重做、考点速记与多协议 AI 助教辅导功能。
 
-英语刷题机 Android 是 Windows 版英语刷题机的独立发行项目。它的核心卖点是：用户可以导入和分享自己的题库，接入自己选择的大模型，并通过打乱选项、整篇练习和错题重做，让有限的真题保持“自由刷题”的新鲜感，而不是反复背答案。
+## 核心特性
+
+- **内置权威教育学题库**：内置《教育学基础》全 10 章专项真题特训卷（共 879 道精选单选题），每卷分多组，每组 15 题，交卷后直观展示正确答案与详尽考点解析。
+- **题目长文本与考点解析优化**：针对教育学题目背景材料长、解析详尽的特点，交卷后自动展开【正确答案】、【考点解析】和【真题出处】。
+- **GitHub Actions 自动化构建**：已配置完整的 CI 流程（`.github/workflows/build-apk.yml`），代码推送到 GitHub 后自动构建 Android APK 并在工件（Artifacts）中提供安装包下载。
+- **纯本地运行 & 离线可用**：数据采用本地 SQLite 存储，不依赖外部服务器，无网状态秒开流畅刷题。
+- **多协议 AI 学习助手**：支持接入 OpenAI、Claude、Gemini 等各大主流模型，答题疑惑可一键召唤 AI 深度答疑。
+- **错题本与考点速记**：做错的题目自动归档到错题本，支持多轮针对性重做。
 
 ## Android 版的重点：为竖屏和大屏重新设计
 
