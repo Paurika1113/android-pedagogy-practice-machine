@@ -74,8 +74,8 @@ function wait(milliseconds: number) {
   return new Promise(resolve => window.setTimeout(resolve, milliseconds))
 }
 
-function reloadAfterAndroidStartup(event: Event) {
-  if ((event as CustomEvent).detail?.needsHomeRefresh === true) void loadHome()
+async function reloadAfterAndroidStartup(event: Event) {
+  await loadHome()
 }
 
 // 挂载时的首次加载和 Android 启动准备完成事件会同时触发首页刷新。用一个在途
@@ -88,12 +88,6 @@ let papersLoad: Promise<void> | null = null
 
 function loadSecondaryHomeData() {
   papersLoad ||= (async () => {
-    await new Promise<void>(resolve => {
-      const run = () => resolve()
-      const idle = (window as any).requestIdleCallback as ((callback: () => void, options?: { timeout: number }) => number) | undefined
-      if (typeof idle === 'function') idle(run, { timeout: 1200 })
-      else window.setTimeout(run, 500)
-    })
     try { papers.value = await get('/papers') || [] } catch { /* Core home remains usable. */ }
   })().finally(() => { papersLoad = null })
 }
@@ -243,7 +237,10 @@ function resumePractice() {
         <button v-if="hasPracticeType('reading')" class="portrait-practice-card reading" type="button" @click="randomPractice('reading')"><img src="/assets/icons/reading.png" alt="" /><span><strong>单选随机练</strong></span><ChevronRight :size="18" /></button>
         <button v-if="hasPracticeType('part_b')" class="portrait-practice-card part-b" type="button" @click="randomPractice('part_b')"><img src="/assets/icons/part-b.png" alt="" /><span><strong>阅读 Part B</strong></span><ChevronRight :size="18" /></button>
       </section>
-      <div v-else-if="data" class="card empty portrait-empty">当前题库还没有可练习题目，请在设置中导入或切换题库。</div>
+      <div v-else-if="data" class="card empty portrait-empty" style="text-align:center;padding:24px 16px;">
+        <p style="margin-bottom:12px;">当前题库内容未加载或正在初始化。</p>
+        <button class="button secondary" type="button" @click="loadHome">点击立即加载题库</button>
+      </div>
 
       <section v-if="vocabulary.length" class="portrait-vocabulary card" @mouseenter="tickerPaused=true" @mouseleave="tickerPaused=false">
         <div class="portrait-section-head"><h2>词汇回顾</h2><RouterLink to="/vocabulary">单词本 <ChevronRight :size="15" /></RouterLink></div>

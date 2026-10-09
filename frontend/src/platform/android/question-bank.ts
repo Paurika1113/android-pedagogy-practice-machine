@@ -346,37 +346,31 @@ export async function installBundledQuestionBank(
   assetPath = 'internal-question-bank.esq',
   profileId?: number,
 ): Promise<JsonRecord> {
+  const targetProfileId = profileId || await activeQuestionBankProfileId()
+  // Check if papers already exist for this profile
+  const existingPapers = await row<{ count: number }>(
+    'SELECT COUNT(*) as count FROM papers WHERE profile_id = ? AND status = "published" AND deleted_at IS NULL',
+    [targetProfileId],
+  )
+  if (existingPapers && Number(existingPapers.count) > 0) {
+    return { available: true, installed: false, alreadyInstalled: true }
+  }
+
   const response = await fetch(`/${assetPath.replace(/^\/+/, '')}`, { cache: 'no-store' })
   if (response.status === 404) return { available: false, installed: false }
   if (!response.ok) throw new LocalApiError(400, `内置题库读取失败：${response.status}`)
   const data = new Uint8Array(await response.arrayBuffer())
-  const bundled = await probeBundledManifest(data)
-  if (bundled) {
-    const upToDate = await row<{ id: number }>(
-      `SELECT id FROM question_bank_packages
-       WHERE package_id = ? AND content_version = ? AND status = 'published'
-       LIMIT 1`,
-      [bundled.packageId, bundled.contentVersion],
-    )
-    if (upToDate) return { available: true, installed: false, alreadyInstalled: true }
-  }
   const pkg = await parseEsqBytes(data)
   const packageId = String(pkg.manifest.packageId || '')
   const contentVersion = String(pkg.manifest.contentVersion || '')
-  const installed = await row<{ id: number }>(
-    `SELECT id FROM question_bank_packages
-     WHERE package_id = ? AND content_version = ? AND status = 'published'
-     LIMIT 1`,
-    [packageId, contentVersion],
-  )
-  if (installed) return { available: true, installed: false, alreadyInstalled: true }
-  const targetProfileId = profileId || await activeQuestionBankProfileId()
+  
   const preview = await buildPreview(pkg, targetProfileId)
-  if (preview.conflicts.some((item: JsonRecord) => item.existing)) {
-    return { available: true, installed: false, conflicts: true }
-  }
+  const resolutions = preview.conflicts.map((item: JsonRecord) => ({
+    paper_key: item.paperKey,
+    action: 'replace_with_imported'
+  }))
   const created = await createParsedEsqImport(assetPath, pkg, data, targetProfileId)
-  await publishEsqImport(created.id, { resolutions: [] })
+  await publishEsqImport(created.id, { resolutions })
   return {
     available: true,
     installed: true,

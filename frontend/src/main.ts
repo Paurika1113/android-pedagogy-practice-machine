@@ -29,30 +29,30 @@ function waitForFirstScreen(): Promise<void> {
 async function runAndroidStartupPreparation() {
   await platformRuntime.ready()
   if (platformRuntime.isAndroid) {
-    // Let the first route open and issue its minimal reads before one-time
-    // content repair, trash cleanup, or bundled-bank installation competes
-    // for the same SQLite connection and Capacitor bridge.
-    await waitForFirstScreen()
-    const { ensureContentRemediation } = await import('./platform/android/content-remediation')
-    startupChanged = await ensureContentRemediation()
-    startupRequiresHomeRefresh = startupChanged
-    const { purgeExpiredTrash } = await import('./platform/android/question-bank-profiles')
-    await purgeExpiredTrash()
-    if (import.meta.env.VITE_BUNDLED_QUESTION_BANKS !== '0') {
+    try {
+      const { purgeExpiredTrash } = await import('./platform/android/question-bank-profiles')
+      await purgeExpiredTrash()
+    } catch {}
+
+    try {
       const { installBundledQuestionBanks } = await import('./platform/android/question-bank')
       const result = await installBundledQuestionBanks()
       if (Array.isArray(result.results) && result.results.some(item => item.installed === true)) {
         startupChanged = true
         startupRequiresHomeRefresh = true
       }
-    } else if (import.meta.env.VITE_BUNDLED_QUESTION_BANK === '1') {
-      const { installBundledQuestionBank } = await import('./platform/android/question-bank')
-      const result = await installBundledQuestionBank()
-      if (result.installed === true) {
+    } catch (e) {
+      console.warn('installBundledQuestionBanks error:', e)
+    }
+
+    try {
+      const { ensureContentRemediation } = await import('./platform/android/content-remediation')
+      const remChanged = await ensureContentRemediation()
+      if (remChanged) {
         startupChanged = true
         startupRequiresHomeRefresh = true
       }
-    }
+    } catch {}
   }
 }
 
