@@ -253,11 +253,11 @@ function resumePractice() {
       </section>
 
       <section class="portrait-paper-section">
-        <div class="portrait-section-head"><h2>真题试卷</h2><span>{{ publishedPapers.length }} 套</span></div>
+        <div class="portrait-section-head"><h2>章节真题</h2><span>{{ publishedPapers.length }} 章</span></div>
         <div v-if="publishedPapers.length" class="portrait-paper-list">
-          <button v-for="paper in publishedPapers" :key="paper.id" type="button" @click="startPaper(paper.id)"><strong>{{ paper.title }}</strong><span v-if="paper.active_session_id" class="pill">已做 {{ paper.active_done }}/{{ paper.unit_count }} 篇</span><span v-else-if="paper.last_score != null" class="pill">{{ scoreText(paper) }}</span></button>
+          <button v-for="paper in publishedPapers" :key="paper.id" type="button" @click="startPaper(paper.id)"><strong>{{ paper.title }}</strong><span v-if="paper.active_session_id" class="pill">已做 {{ paper.active_done }}/{{ paper.unit_count }} 组</span><span v-else-if="paper.last_score != null" class="pill">{{ scoreText(paper) }}</span><span v-else class="pill">{{ paper.question_count }} 题</span></button>
         </div>
-        <div v-else class="card empty">当前题库还没有可练习试卷。</div>
+        <div v-else class="card empty">当前题库还没有可练习章节。</div>
       </section>
     </div>
   </div>

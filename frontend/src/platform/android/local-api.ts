@@ -117,6 +117,11 @@ export async function androidLocalApi<T>(path: string, options: RequestInit = {}
   if (method === 'GET' && pathname === '/study-todos') return await studyTodos() as T
   if (method === 'GET' && pathname === '/startup') return await dashboard() as T
   if (method === 'GET' && pathname === '/papers') return await listPapers() as T
+  params = match(pathname, /^\/papers\/(\d+)\/units$/)
+  if (params && method === 'GET') {
+    const { listPaperUnits } = await import('./question-bank')
+    return await listPaperUnits(Number(params[1])) as T
+  }
   if (method === 'GET' && pathname === '/wrong') return await listWrong(url.searchParams.get('view') || 'current') as T
   if (method === 'POST' && pathname === '/wrong/archive-delete') {
     const unitIds = (body?.unit_ids || []).map(Number).filter(Boolean)

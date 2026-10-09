@@ -328,15 +328,16 @@ async function saveNativeEsqPackage(
 }
 
 async function bundledProfileId(subject: string): Promise<number> {
-  const name = subject.includes('教育学') ? '教育学基础' : subject
+  const name = subject
   const existing = await row<{ id: number }>(
     'SELECT id FROM question_bank_profiles WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL LIMIT 1',
     [name],
   )
   if (existing) return Number(existing.id)
+  const isDefault = name.includes('山香') ? 1 : 0
   const created = await run(
-    'INSERT INTO question_bank_profiles(name, description, is_default) VALUES (?, ?, 0)',
-    [name, `内置${name}客观题特训题库`],
+    'INSERT INTO question_bank_profiles(name, description, is_default) VALUES (?, ?, ?)',
+    [name, `内置《${name}》客观题特训题库`, isDefault],
   )
   return Number(created.lastId)
 }
@@ -387,7 +388,8 @@ export async function installBundledQuestionBank(
 
 export async function installBundledQuestionBanks(): Promise<JsonRecord> {
   const assets = [
-    { path: 'internal-question-bank.esq', subject: '教育学基础' },
+    { path: 'internal-question-bank.esq', subject: '山香3600题·教育学' },
+    { path: 'internal-question-bank-ranling.esq', subject: '燃领题本·教育学' },
   ]
   const results: JsonRecord[] = []
   for (const asset of assets) {
@@ -1018,6 +1020,21 @@ export async function sweepEmptyPaperSessions(): Promise<void> {
   )
 }
 
+export async function listPaperUnits(paperId: number): Promise<JsonRecord[]> {
+  return rows(
+    `SELECT u.id, u.paper_id, u.title, u.unit_type, u.subtype, u.sequence,
+       COUNT(q.id) AS question_count,
+       pus.submitted AS is_submitted, pus.score, pus.max_score, pus.wrong_count
+     FROM units u
+     LEFT JOIN questions q ON q.unit_id = u.id
+     LEFT JOIN practice_unit_submissions pus ON pus.unit_id = u.id
+     WHERE u.paper_id = ?
+     GROUP BY u.id
+     ORDER BY u.sequence ASC, u.id ASC`,
+    [paperId],
+  )
+}
+
 export async function listPapers(): Promise<JsonRecord[]> {
   const profileId = await activeQuestionBankProfileId()
   return rows(
@@ -1062,7 +1079,7 @@ export async function listPapers(): Promise<JsonRecord[]> {
      LEFT JOIN questions q ON q.unit_id = u.id
      WHERE p.profile_id = ? AND p.deleted_at IS NULL
      GROUP BY p.id
-     ORDER BY p.year DESC, p.title`,
+     ORDER BY p.year ASC, p.id ASC`,
     [profileId],
   )
 }

@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS question_bank_profiles (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_question_bank_profiles_name
   ON question_bank_profiles(name COLLATE NOCASE) WHERE deleted_at IS NULL;
 INSERT INTO question_bank_profiles(name, description, is_default)
-SELECT '教育学基础', '福建教综·教育学客观题配置', 1
+SELECT '山香3600题·教育学', '福建教综·山香教育学基础879题真题精选', 1
 WHERE NOT EXISTS (SELECT 1 FROM question_bank_profiles);
 CREATE TABLE IF NOT EXISTS papers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
