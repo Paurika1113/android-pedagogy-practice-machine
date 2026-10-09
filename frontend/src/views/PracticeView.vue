@@ -1071,7 +1071,7 @@ async function copySelectedTerm() {
         </div>
       </div>
       <div class="portrait-practice-heading">
-        <strong>{{ activeUnit?.year }} {{ activeUnit?.title }}</strong>
+        <strong>{{ activeUnit?.title }}</strong>
         <span>{{ activeUnitProgress.answered }}/{{ activeUnitProgress.total }}</span>
       </div>
     </header>
@@ -1364,7 +1364,16 @@ async function copySelectedTerm() {
         <button v-else class="button secondary" @click="router.push('/wrong')">查看错题</button>
       </footer>
     </div>
-    <div v-else class="loading">正在展开试卷…</div>
+    <div v-else class="loading">
+      <div v-if="error" class="warning" style="margin:20px;max-width:32rem">
+        <strong>无法展开练习：</strong>{{ error }}
+        <div style="margin-top:12px">
+          <button class="button compact secondary" type="button" @click="load">重试加载</button>
+          <button class="button compact ghost" type="button" style="margin-left:8px" @click="router.push('/library')">返回题库</button>
+        </div>
+      </div>
+      <div v-else>正在展开题目…</div>
+    </div>
     <div v-if="vocabMenu.visible" class="vocab-context-menu" :style="{left:`${vocabMenu.x}px`,top:`${vocabMenu.y}px`}" @click.stop>
       <button @click="addSelectedVocabulary">加入单词本</button>
       <button @click="copySelectedTerm">复制所选内容</button>

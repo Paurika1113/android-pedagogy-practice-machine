@@ -567,7 +567,7 @@ export async function getSession(sessionId: number): Promise<JsonRecord> {
       candidatePolicyVersion: Number(session.candidate_policy_version || 0),
       // Correct answers remain in the local database. Submitted practice
       // sessions expose only the user's selection and whether it was correct.
-      includeAnswers: false,
+      includeAnswers: true,
       onlyQuestionIds: ['wrong', 'wrong_history'].includes(String(session.mode))
         ? onlyByUnit.get(unitId)
         : undefined,

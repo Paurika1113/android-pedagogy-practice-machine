@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { BookOpen, CheckSquare, ChevronDown, ChevronRight, Layers, MoveRight, Play, Trash2, X } from 'lucide-vue-next'
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { del, get, post } from '../api'
 import { confirmDialog } from '../platform/dialogs'
@@ -38,8 +38,19 @@ async function loadPapers() {
   try { papers.value = await get('/papers') } catch (e) { error.value = String(e) }
 }
 
+function reloadAfterAndroidStartup(event: Event) {
+  if ((event as CustomEvent).detail?.needsHomeRefresh === true || (event as CustomEvent).detail?.changed === true) {
+    void Promise.all([loadPapers(), loadQuestionBankProfiles()])
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('android-startup-prepared', reloadAfterAndroidStartup)
   await Promise.all([loadPapers(), loadQuestionBankProfiles()])
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('android-startup-prepared', reloadAfterAndroidStartup)
 })
 
 async function toggleExpand(paperId: number) {
